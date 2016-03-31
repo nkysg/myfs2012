@@ -30,14 +30,19 @@ lock_server::acquire(int clt, lock_protocol::lockid_t lid, int &r)
   pthread_mutex_unlock(&mutex_);
 
   lock_protocol::status ret = lock_protocol::OK;
-  if (lockTable_.find(lid) == lockTable_.end()) {
-    pthread_mutex_lock(&mutex_);
-    if (lockTable_.find(lid) == lockTable_.end()) {
-      lockTable_[lid] = new Mutex();
+  std::map<lock_protocol::lockid_t, Lock *>::iterator iter;
+
+  pthread_mutex_lock(&mutex_);
+  if ((iter = lockTable_.find(lid)) == lockTable_.end()) {
+    lockTable_[lid] = new Lock(mutex_);
+    lockTable_[lid]->lock();
+  } else {
+    while (iter->second->islocked()) {
+      iter->second->wait();
     }
-    pthread_mutex_unlock(&mutex_);
+    iter->second->lock();
   }
-  lockTable_[lid]->Lock();
+  pthread_mutex_unlock(&mutex_);
   return ret;
 }
 
@@ -50,10 +55,15 @@ lock_server::release(int clt, lock_protocol::lockid_t lid, int &r)
   pthread_mutex_unlock(&mutex_);
 
   lock_protocol::status ret = lock_protocol::OK;
-  if (lockTable_.find(lid) == lockTable_.end() || !lockTable_[lid]->islocked_) {
+  std::map<lock_protocol::lockid_t, Lock *>::iterator iter;
+  pthread_mutex_lock(&mutex_);
+  if ((iter = lockTable_.find(lid)) == lockTable_.end() || !iter->second->islocked()) {
     ret = lock_protocol::RPCERR;
     return ret;
   }
-  lockTable_[lid]->Unlock();
+  iter->second->unlock();
+  iter->second->notify();
+  pthread_mutex_unlock(&mutex_);
+
   return ret;
 }

@@ -280,13 +280,15 @@ class rpcs : public chanmgr {
         // has been sent; in that case buf points to a copy of the reply,
         // and sz holds the size of the reply.
 	struct reply_t {
-		reply_t (unsigned int _xid) {
+		reply_t (unsigned int _xid, unsigned int _xid_rep) {
 			xid = _xid;
+            xid_rep = _xid_rep;
 			cb_present = false;
 			buf = NULL;
 			sz = 0;
 		}
 		unsigned int xid;
+        unsigned int xid_rep;
 		bool cb_present; // whether the reply buffer is valid
 		char *buf;      // the reply buffer
 		int sz;         // the size of reply buffer
