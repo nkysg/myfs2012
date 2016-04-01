@@ -685,13 +685,17 @@ rpcs::checkduplicate_and_update(unsigned int clt_nonce, unsigned int xid,
             state = NEW;
         }
 
-        it = clt->second.begin();
-        // why can't use the xid_rep? maybe deadlock
-        // ensure the at most once semantics
+        // why can't use the xid_rep?
+        // because the client can send much request one time which have the same xid_rep,
+        // when new request with the bigger xid_rep arrive, the old request may be not complete
+        // then the old xid_rep may less than the pre_xid_rep but the xid is bigger than pre_xid_pre
+
+        // we must ensure the at most once semantics
         if (xid < clt->second.rbegin()->xid_rep) {
+            // printf("xid: %u, xid_rep: %u, pre_rep: %u\n", xid, xid_rep, clt->second.rbegin()->xid_rep);
             state = FORGOTTEN;
         } else {
-            for ( ; it != clt->second.end(); ) {
+            for ( it = clt->second.begin(); it != clt->second.end(); ) {
                 if (it->xid <= xid_rep) {
                     free(it->buf);
                     ++it;
