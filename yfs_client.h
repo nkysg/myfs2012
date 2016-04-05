@@ -9,6 +9,7 @@
 
 class yfs_client {
   extent_client *ec;
+  pthread_mutex_t mutex_;
  public:
 
   typedef unsigned long long inum;
@@ -34,6 +35,9 @@ class yfs_client {
  private:
   static std::string filename(inum);
   static inum n2i(std::string);
+
+  static inum random_inum(); // don't check the unique
+  inum random_inum(int); // check the unique but maybe slow
  public:
 
   yfs_client(std::string, std::string);
@@ -43,6 +47,16 @@ class yfs_client {
 
   int getfile(inum, fileinfo &);
   int getdir(inum, dirinfo &);
+
+  int createfile(inum, const char *, mode_t, inum &);
+  int look_up_file(inum, const char *, bool &, inum &);
+  int read_dir(inum, std::vector<dirent> &);
+  int set_attr(inum, struct stat *);
+  int read(inum, size_t, off_t, std::string &);
+  int write(inum, const char *, size_t, off_t);
 };
 
-#endif 
+std::istringstream& operator>>(std::istringstream &is, yfs_client::dirent &);
+std::ostringstream& operator<<(std::ostringstream &os, yfs_client::dirent &);
+
+#endif
