@@ -1,6 +1,7 @@
 // the extent server implementation
 
 #include "extent_server.h"
+#include "rpc/slock.h"
 #include <sstream>
 #include <stdio.h>
 #include <unistd.h>
@@ -11,13 +12,15 @@
 extent_server::extent_server() {
   pthread_mutex_init(&mutex_, NULL);
   // TODO: we can load a file which saved before to the db
+  int a;
+  put(0x00000001, "", a);
 }
 
 
 int extent_server::put(extent_protocol::extentid_t id, std::string buf, int &)
 {
   // You fill this in for Lab 2.
-  pthread_mutex_lock(&mutex_);
+  ScopedLock l(&mutex_);
   db_[id].id_ = id;
   db_[id].buf_ = buf;
   if (db_[id].attr_.atime == 0) {
@@ -26,7 +29,6 @@ int extent_server::put(extent_protocol::extentid_t id, std::string buf, int &)
   db_[id].attr_.mtime = (unsigned int)time(NULL);
   db_[id].attr_.ctime = (unsigned int)time(NULL);
   db_[id].attr_.size = buf.size();
-  pthread_mutex_unlock(&mutex_);
   return extent_protocol::OK;
 }
 
@@ -34,14 +36,13 @@ int extent_server::get(extent_protocol::extentid_t id, std::string &buf)
 {
   // You fill this in for Lab 2.
   std::map<extent_protocol::extentid_t, struct DB>::iterator it;
-  pthread_mutex_lock(&mutex_);
+  ScopedLock l(&mutex_);
   if ((it = db_.find(id)) == db_.end()) {
     pthread_mutex_unlock(&mutex_);
     return extent_protocol::NOENT;
   }
   buf.assign(it->second.buf_);
   it->second.attr_.atime = (unsigned int)time(NULL);
-  pthread_mutex_unlock(&mutex_);
   return extent_protocol::OK;
 }
 
@@ -54,13 +55,12 @@ int extent_server::getattr(extent_protocol::extentid_t id, extent_protocol::attr
 
   // dbIter it;
   std::map<extent_protocol::extentid_t, struct DB>::iterator it;
-  pthread_mutex_lock(&mutex_);
+  ScopedLock l(&mutex_);
   if ((it = db_.find(id)) == db_.end()) {
     pthread_mutex_unlock(&mutex_);
     return extent_protocol::NOENT;
   }
   a = it->second.attr_;
-  pthread_mutex_unlock(&mutex_);
   return extent_protocol::OK;
 }
 
@@ -68,11 +68,10 @@ int extent_server::remove(extent_protocol::extentid_t id, int &)
 {
   // You fill this in for Lab 2.
   std::map<extent_protocol::extentid_t, struct DB>::iterator it;
-  pthread_mutex_lock(&mutex_);
+  ScopedLock l(&mutex_);
   if ((it = db_.find(id)) != db_.end()) {
     db_.erase(it);
   }
-  pthread_mutex_unlock(&mutex_);
   return extent_protocol::OK;
 }
 

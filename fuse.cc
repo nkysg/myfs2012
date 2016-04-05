@@ -244,7 +244,7 @@ fuseserver_write(fuse_req_t req, fuse_ino_t ino,
 //
 yfs_client::status
 fuseserver_createhelper(fuse_ino_t parent, const char *name,
-                        mode_t mode, struct fuse_entry_param *e)
+                        mode_t mode, struct fuse_entry_param *e, bool isdir)
 {
   // In yfs, timeouts are always set to 0.0, and generations are always set to 0
   e->attr_timeout = 0.0;
@@ -254,17 +254,11 @@ fuseserver_createhelper(fuse_ino_t parent, const char *name,
   yfs_client::inum inum;
   yfs_client::status ret;
 
-  bool found = false;
-  ret = yfs->look_up_file(parent, name, found, inum);
+  ret = yfs->createfile(parent, name, mode, inum, isdir);
   if (ret != yfs_client::OK) {
-    return yfs_client::NOENT;
-  }
-  if (found) {
-    return yfs_client::EXIST;
-  }
-
-  ret = yfs->createfile(parent, name, mode, inum);
-  if (ret != yfs_client::OK) {
+    if (ret == yfs_client::EXIST) {
+      return yfs_client::EXIST;
+    }
     return yfs_client::NOENT;
   }
 
@@ -285,7 +279,7 @@ fuseserver_create(fuse_req_t req, fuse_ino_t parent, const char *name,
 {
   struct fuse_entry_param e;
   yfs_client::status ret;
-  if( (ret = fuseserver_createhelper( parent, name, mode, &e )) == yfs_client::OK ) {
+  if( (ret = fuseserver_createhelper( parent, name, mode, &e, false)) == yfs_client::OK ) {
     fuse_reply_create(req, &e, fi);
   } else {
 		if (ret == yfs_client::EXIST) {
@@ -300,7 +294,7 @@ void fuseserver_mknod( fuse_req_t req, fuse_ino_t parent,
     const char *name, mode_t mode, dev_t rdev ) {
   struct fuse_entry_param e;
   yfs_client::status ret;
-  if( (ret = fuseserver_createhelper( parent, name, mode, &e )) == yfs_client::OK ) {
+  if( (ret = fuseserver_createhelper( parent, name, mode, &e, false)) == yfs_client::OK ) {
     fuse_reply_entry(req, &e);
   } else {
 		if (ret == yfs_client::EXIST) {
@@ -467,8 +461,18 @@ fuseserver_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name,
   (void) e;
 
   // You fill this in for Lab 3
-#if 0
-  fuse_reply_entry(req, &e);
+#if 1
+  yfs_client::status ret;
+  if( (ret = fuseserver_createhelper( parent, name, mode, &e, true)) == yfs_client::OK ) {
+    fuse_reply_entry(req, &e);
+  } else {
+		if (ret == yfs_client::EXIST) {
+			fuse_reply_err(req, EEXIST);
+		}else{
+			fuse_reply_err(req, ENOENT);
+		}
+  }
+  // fuse_reply_entry(req, &e);
 #else
   fuse_reply_err(req, ENOSYS);
 #endif
@@ -488,7 +492,13 @@ fuseserver_unlink(fuse_req_t req, fuse_ino_t parent, const char *name)
   // You fill this in for Lab 3
   // Success:	fuse_reply_err(req, 0);
   // Not found:	fuse_reply_err(req, ENOENT);
-  fuse_reply_err(req, ENOSYS);
+  yfs_client::status ret;
+  ret = yfs->unlink_file(parent, name);
+  if (ret != yfs_client::OK) {
+    fuse_reply_err(req, ENOENT);
+    return;
+  }
+  fuse_reply_err(req, 0);
 }
 
 void
