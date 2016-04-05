@@ -7,9 +7,9 @@
 
 class extent_protocol {
  public:
-  typedef int status;
   typedef unsigned long long extentid_t;
   enum xxstatus { OK, RPCERR, NOENT, IOERR };
+  typedef int status;
   enum rpc_numbers {
     put = 0x6001,
     get,
@@ -18,6 +18,8 @@ class extent_protocol {
   };
 
   struct attr {
+    attr() : atime(0), mtime(0), ctime(0), size(0) { }
+
     unsigned int atime;
     unsigned int mtime;
     unsigned int ctime;
@@ -45,4 +47,4 @@ operator<<(marshall &m, extent_protocol::attr a)
   return m;
 }
 
-#endif 
+#endif
