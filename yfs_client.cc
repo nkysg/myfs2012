@@ -2,6 +2,7 @@
 #include "yfs_client.h"
 #include "extent_client.h"
 #include "lock_client.h"
+#include "lock_client_cache.h"
 #include "rpc/slock.h"
 #include <sstream>
 #include <iostream>
@@ -31,6 +32,7 @@ yfs_client::yfs_client(std::string extent_dst, std::string lock_dst)
 {
   ec = new extent_client(extent_dst);
   lc = new lock_client(lock_dst);
+  // lc = new lock_client_cache(lock_dst);
 
   // init the seed for random
   srandom(random_number_seed());
