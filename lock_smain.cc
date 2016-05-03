@@ -1,4 +1,4 @@
-#include "rpc.h"
+#include "rpc/rpc.h"
 #include <arpa/inet.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -39,7 +39,6 @@ main(int argc, char *argv[])
 #ifdef RSM
    rsm rsm(argv[1], argv[2]);
 #endif // RSM
-
 
   while(1)
     sleep(1000);

@@ -10,6 +10,7 @@ do_worker(void *arg)
 	ThrPool *tp = (ThrPool *)arg;
 	while (1) {
 		ThrPool::job_t j;
+        // if there is no job, it will block to wait to be awared
 		if (!tp->takeJob(&j))
 			break; //die
 
@@ -21,7 +22,7 @@ do_worker(void *arg)
 //if blocking, then addJob() blocks when queue is full
 //otherwise, addJob() simply returns false when queue is full
 ThrPool::ThrPool(int sz, bool blocking)
-: nthreads_(sz),blockadd_(blocking),jobq_(100*sz) 
+: nthreads_(sz),blockadd_(blocking),jobq_(100*sz)
 {
 	pthread_attr_init(&attr_);
 	pthread_attr_setstacksize(&attr_, 128<<10);
@@ -33,7 +34,7 @@ ThrPool::ThrPool(int sz, bool blocking)
 	}
 }
 
-//IMPORTANT: this function can be called only when no external thread 
+//IMPORTANT: this function can be called only when no external thread
 //will ever use this thread pool again or is currently blocking on it
 ThrPool::~ThrPool()
 {
@@ -50,7 +51,7 @@ ThrPool::~ThrPool()
 	VERIFY(pthread_attr_destroy(&attr_)==0);
 }
 
-bool 
+bool
 ThrPool::addJob(void *(*f)(void *), void *a)
 {
 	job_t j;
@@ -60,7 +61,7 @@ ThrPool::addJob(void *(*f)(void *), void *a)
 	return jobq_.enq(j,blockadd_);
 }
 
-bool 
+bool
 ThrPool::takeJob(job_t *j)
 {
 	jobq_.deq(j);

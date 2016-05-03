@@ -5,6 +5,7 @@
 
 #include "rpc.h"
 
+// from the client to the server
 class lock_protocol {
  public:
   enum xxstatus { OK, RETRY, RPCERR, NOENT, IOERR };
@@ -18,6 +19,7 @@ class lock_protocol {
   };
 };
 
+// from the server to the client
 class rlock_protocol {
  public:
   enum xxstatus { OK, RPCERR };
@@ -27,4 +29,4 @@ class rlock_protocol {
     retry = 0x8002
   };
 };
-#endif 
+#endif
