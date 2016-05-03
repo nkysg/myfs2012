@@ -31,8 +31,10 @@ random_number_seed()
 yfs_client::yfs_client(std::string extent_dst, std::string lock_dst)
 {
   ec = new extent_client(extent_dst);
-  lc = new lock_client(lock_dst);
-  // lc = new lock_client_cache(lock_dst);
+  // lc = new lock_client(lock_dst);
+
+  // the memory leek?
+  lc = new lock_client_cache(lock_dst, new lock_release_flush(ec));
 
   // init the seed for random
   srandom(random_number_seed());
@@ -84,9 +86,12 @@ yfs_client::getfile(inum inum, fileinfo &fin)
 
   printf("getfile %016llx\n", inum);
   extent_protocol::attr a;
-  if (ec->getattr(inum, a) != extent_protocol::OK) {
-    r = IOERR;
-    goto release;
+  {
+    ScopedLockAcquire il(lc, inum);
+    if (ec->getattr(inum, a) != extent_protocol::OK) {
+      r = IOERR;
+      goto release;
+    }
   }
 
   fin.atime = a.atime;
@@ -109,9 +114,12 @@ yfs_client::getdir(inum inum, dirinfo &din)
 
   printf("getdir %016llx\n", inum);
   extent_protocol::attr a;
-  if (ec->getattr(inum, a) != extent_protocol::OK) {
-    r = IOERR;
-    goto release;
+  {
+    ScopedLockAcquire il(lc, inum);
+    if (ec->getattr(inum, a) != extent_protocol::OK) {
+      r = IOERR;
+      goto release;
+    }
   }
 
   din.atime = a.atime;
@@ -178,9 +186,12 @@ yfs_client::look_up_file(inum parent, const char *name, bool &found, inum &inum)
 {
   int r = OK;
   std::string buf;
-  if (ec->get(parent, buf) != extent_protocol::OK) {
-    r = NOENT;
-    return r;
+  ScopedLockAcquire pl(lc, parent);
+  {
+    if (ec->get(parent, buf) != extent_protocol::OK) {
+      r = NOENT;
+      return r;
+    }
   }
 
   dirent entry;
@@ -193,7 +204,7 @@ yfs_client::look_up_file(inum parent, const char *name, bool &found, inum &inum)
     }
   }
 
-   if (found) {
+  if (found) {
     inum = entry.inum;
   }
 
@@ -209,16 +220,22 @@ yfs_client::createfile(inum parent, const char *name, mode_t mode, inum &inum, b
   bool found = false;
   ScopedLockAcquire pl(lc, parent);
 
-  if (look_up_file(parent, name, found, inum) != OK) {
+  if (ec->get(parent, buf) != extent_protocol::OK) {
     return NOENT;
+  }
+
+  dirent entry;
+  std::istringstream ist(buf);
+  found = false;
+  while (ist >> entry) {
+    if (entry.name.compare(name) == 0) {
+      found = true;
+      break;
+    }
   }
 
   if (found) {
     return EXIST;
-  }
-
-  if (ec->get(parent, buf) != extent_protocol::OK) {
-    return NOENT;
   }
 
   inum = random_inum(isdir);
@@ -232,7 +249,6 @@ yfs_client::createfile(inum parent, const char *name, mode_t mode, inum &inum, b
   }
 
   // add the <name, ino> entry into @parent
-  dirent entry;
   entry.name = name;
   entry.inum = inum;
 
@@ -303,9 +319,12 @@ yfs_client::read_dir(inum parent, std::vector<dirent> &entries)
 {
   int r = OK;
   std::string buf;
-  if (ec->get(parent, buf) != extent_protocol::OK) {
-    r = NOENT;
-    return r;
+  {
+    ScopedLockAcquire pl(lc, parent);
+    if (ec->get(parent, buf) != extent_protocol::OK) {
+      r = NOENT;
+      return r;
+    }
   }
 
   std::istringstream ist(buf);
@@ -343,9 +362,12 @@ yfs_client::read(inum inum, size_t size, off_t off, std::string &buf)
 {
   int r = OK;
   std::string buf2;
-  if (ec->get(inum, buf2) != extent_protocol::OK) {
-    r = NOENT;
-    return r;
+  {
+    ScopedLockAcquire il(lc, inum);
+    if (ec->get(inum, buf2) != extent_protocol::OK) {
+      r = NOENT;
+      return r;
+    }
   }
 
   if ((size_t)off >= buf2.size()) {

@@ -28,7 +28,7 @@ class extent_server {
 
  private:
   // TODO: we can use smart_ptr to avoid copy in the lock region
-  std::map<extent_protocol::extentid_t, struct DB> db_;
+  std::map<extent_protocol::extentid_t, struct DB *> db_;
   // typedef std::map<extent_protocol::extentid_t, struct DB>::iterator dbIter;
   pthread_mutex_t mutex_;
 };

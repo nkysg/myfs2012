@@ -8,6 +8,10 @@
 #include <stdio.h>
 #include "tprintf.h"
 
+void
+lock_release_flush::dorelease(lock_protocol::lockid_t eid) {
+  ec_->flush(eid);
+}
 
 lock_client_cache::lock_client_cache(std::string xdst,
 				     class lock_release_user *_lu)
@@ -130,6 +134,7 @@ lock_client_cache::release(lock_protocol::lockid_t lid)
         iter->second->setState(RELEASING);
         pthread_mutex_unlock(&mutex_);
 
+        lu->dorelease(lid);
         ret = cl->call(lock_protocol::release, lid, id, r);
 
         pthread_mutex_lock(&mutex_);
@@ -173,6 +178,7 @@ lock_client_cache::revoke_handler(lock_protocol::lockid_t lid,
     if (iter->second->getState() == FREE) {
       iter->second->setState(RELEASING);
       pthread_mutex_unlock(&mutex_);
+      lu->dorelease(lid);
       ret = cl->call(lock_protocol::release, lid, id, r);
       pthread_mutex_lock(&mutex_);
       if (ret == lock_protocol::OK) {

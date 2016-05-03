@@ -20,29 +20,33 @@ extent_server::extent_server() {
 int extent_server::put(extent_protocol::extentid_t id, std::string buf, int &)
 {
   // You fill this in for Lab 2.
+  std::map<extent_protocol::extentid_t, struct DB *>::iterator it;
   ScopedLock l(&mutex_);
-  db_[id].id_ = id;
-  db_[id].buf_ = buf;
-  if (db_[id].attr_.atime == 0) {
-    db_[id].attr_.atime = (unsigned int)time(NULL);
+  if ((it = db_.find(id)) == db_.end()) {
+    db_[id] = new DB();
   }
-  db_[id].attr_.mtime = (unsigned int)time(NULL);
-  db_[id].attr_.ctime = (unsigned int)time(NULL);
-  db_[id].attr_.size = buf.size();
+  db_[id]->id_ = id;
+  db_[id]->buf_ = buf;
+  if (db_[id]->attr_.atime == 0) {
+    db_[id]->attr_.atime = (unsigned int)time(NULL);
+  }
+  db_[id]->attr_.mtime = (unsigned int)time(NULL);
+  db_[id]->attr_.ctime = (unsigned int)time(NULL);
+  db_[id]->attr_.size = buf.size();
   return extent_protocol::OK;
 }
 
 int extent_server::get(extent_protocol::extentid_t id, std::string &buf)
 {
   // You fill this in for Lab 2.
-  std::map<extent_protocol::extentid_t, struct DB>::iterator it;
+  std::map<extent_protocol::extentid_t, struct DB *>::iterator it;
   ScopedLock l(&mutex_);
   if ((it = db_.find(id)) == db_.end()) {
     pthread_mutex_unlock(&mutex_);
     return extent_protocol::NOENT;
   }
-  buf.assign(it->second.buf_);
-  it->second.attr_.atime = (unsigned int)time(NULL);
+  buf.assign(it->second->buf_);
+  it->second->attr_.atime = (unsigned int)time(NULL);
   return extent_protocol::OK;
 }
 
@@ -54,24 +58,27 @@ int extent_server::getattr(extent_protocol::extentid_t id, extent_protocol::attr
   // unmount) if getattr fails.
 
   // dbIter it;
-  std::map<extent_protocol::extentid_t, struct DB>::iterator it;
+  std::map<extent_protocol::extentid_t, struct DB *>::iterator it;
   ScopedLock l(&mutex_);
   if ((it = db_.find(id)) == db_.end()) {
     pthread_mutex_unlock(&mutex_);
     return extent_protocol::NOENT;
   }
-  a = it->second.attr_;
+  a = it->second->attr_;
   return extent_protocol::OK;
 }
 
 int extent_server::remove(extent_protocol::extentid_t id, int &)
 {
   // You fill this in for Lab 2.
-  std::map<extent_protocol::extentid_t, struct DB>::iterator it;
+  std::map<extent_protocol::extentid_t, struct DB *>::iterator it;
   ScopedLock l(&mutex_);
   if ((it = db_.find(id)) != db_.end()) {
+    delete it->second;
     db_.erase(it);
+    return extent_protocol::OK;
+  } else {
+    return extent_protocol::NOENT;
   }
-  return extent_protocol::OK;
 }
 

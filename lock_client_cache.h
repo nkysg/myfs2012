@@ -9,6 +9,7 @@
 #include "lock_protocol.h"
 #include "rpc.h"
 #include "lock_client.h"
+#include "extent_client.h"
 #include "lang/verify.h"
 
 // Classes that inherit lock_release_user can override dorelease so that
@@ -18,6 +19,15 @@ class lock_release_user {
  public:
   virtual void dorelease(lock_protocol::lockid_t) = 0;
   virtual ~lock_release_user() {};
+};
+
+class lock_release_flush : public lock_release_user {
+ public:
+   lock_release_flush(extent_client *ec) : ec_(ec) { }
+   virtual void dorelease(lock_protocol::lockid_t eid);
+   virtual ~lock_release_flush() {};
+ private:
+   extent_client *ec_;
 };
 
 class lock_client_cache : public lock_client {

@@ -3,7 +3,7 @@
 #ifndef extent_protocol_h
 #define extent_protocol_h
 
-#include "rpc.h"
+#include "rpc/rpc.h"
 
 class extent_protocol {
  public:
