@@ -1,4 +1,4 @@
-#include "rpc.h"
+#include "rpc/rpc.h"
 #include <arpa/inet.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -64,7 +64,6 @@ main(int argc, char *argv[])
   rsm.reg(lock_protocol::stat, &ls, &lock_server_cache_rsm::stat);
 #endif // STEP_ONE
 #endif // RSM
-
 
   while(1)
     sleep(1000);

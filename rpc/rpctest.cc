@@ -259,7 +259,7 @@ simple_tests(rpcc *c)
 	printf("simple_tests OK\n");
 }
 
-void 
+void
 concurrent_test(int nt)
 {
 	// create threads that make lots of calls in parallel,
@@ -281,7 +281,7 @@ concurrent_test(int nt)
 	printf(" OK\n");
 }
 
-void 
+void
 lossy_test()
 {
 	int ret;
@@ -313,7 +313,7 @@ lossy_test()
 	VERIFY(setenv("RPC_LOSSY", "0", 1) == 0);
 }
 
-void 
+void
 failure_test()
 {
 	rpcc *client1;
@@ -461,7 +461,7 @@ main(int argc, char *argv[])
 			VERIFY (clients[i]->bind() == 0);
 		}
 
-		simple_tests(clients[0]);
+        simple_tests(clients[0]);
 		concurrent_test(10);
 		lossy_test();
 		if (isserver) {
