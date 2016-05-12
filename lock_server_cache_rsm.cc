@@ -48,20 +48,14 @@ lock_server_cache_rsm::revoker()
   while (true) {
     client_entry e;
     revokeq.deq(&e);
-    handle h(e.cid);
-    rpcc *cl = h.safebind();
-    rlock_protocol::status ret;
-    if (cl) {
-      int r;
-      ret = cl->call(rlock_protocol::revoke, e.lid, e.xid, r);
-    }
-    {
-      ScopedLock l(&mutex_);
-      std::map<lock_protocol::lockid_t, Lock *>::iterator iter;
-      iter = lockTable_.find(e.lid);
-      VERIFY(iter != lockTable_.end());
-      Lock *entry = iter->second;
-      entry->setRevoke(false);
+
+    if (rsm->amiprimary()) {
+      handle h(e.cid);
+      rpcc *cl = h.safebind();
+      if (cl) {
+        int r;
+        cl->call(rlock_protocol::revoke, e.lid, e.xid, r);
+      }
     }
   }
 }
@@ -77,11 +71,13 @@ lock_server_cache_rsm::retryer()
   while (true) {
     client_entry e;
     retryq.deq(&e);
-    handle h(e.cid);
-    rpcc *cl = h.safebind();
-    if (cl) {
-      int r;
-      cl->call(rlock_protocol::retry, e.lid, e.xid, r);
+    if (rsm->amiprimary()) {
+      handle h(e.cid);
+      rpcc *cl = h.safebind();
+      if (cl) {
+        int r;
+        cl->call(rlock_protocol::retry, e.lid, e.xid, r);
+      }
     }
   }
 }

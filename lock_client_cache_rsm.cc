@@ -41,6 +41,7 @@ lock_client_cache_rsm::lock_client_cache_rsm(std::string xdst,
   // You fill this in Step Two, Lab 7
   // - Create rsmc, and use the object to do RPC
   //   calls instead of the rpcc object of lock_client
+  rsmc = new rsm_client(xdst);
   pthread_t th;
   int r = pthread_create(&th, NULL, &releasethread, (void *) this);
   VERIFY (r == 0);
@@ -66,7 +67,7 @@ lock_client_cache_rsm::releaser()
     if (lu) {
       lu->dorelease(e.lid);
     }
-    ret = cl->call(lock_protocol::release, e.lid, id, e.xid, r);
+    ret = rsmc->call(lock_protocol::release, e.lid, id, e.xid, r);
     {
       ScopedLock l(&mutex_);
       std::map<lock_protocol::lockid_t, Lock *>::iterator iter;
@@ -110,7 +111,7 @@ lock_client_cache_rsm::acquire(lock_protocol::lockid_t lid)
           pthread_mutex_unlock(&mutex_);
 
           // tprintf("client none:\n");
-          ret = cl->call(lock_protocol::acquire, lid, id, cur_xid, r);
+          ret = rsmc->call(lock_protocol::acquire, lid, id, cur_xid, r);
           // tprintf("client none2:\n");
 
           pthread_mutex_lock(&mutex_);
@@ -180,7 +181,7 @@ lock_client_cache_rsm::acquire(lock_protocol::lockid_t lid)
             ++xid;
 
             pthread_mutex_unlock(&mutex_);
-            ret = cl->call(lock_protocol::acquire, lid, id, cur_xid, r);
+            ret = rsmc->call(lock_protocol::acquire, lid, id, cur_xid, r);
             pthread_mutex_lock(&mutex_);
 
             if (ret == lock_protocol::OK) {
@@ -239,7 +240,7 @@ lock_client_cache_rsm::release(lock_protocol::lockid_t lid)
         if (lu) {
           lu->dorelease(lid);
         }
-        ret = cl->call(lock_protocol::release, lid, id, cur_xid, r);
+        ret = rsmc->call(lock_protocol::release, lid, id, cur_xid, r);
 
         pthread_mutex_lock(&mutex_);
         // if (ret == lock_protocol::OK) {
