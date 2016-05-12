@@ -24,7 +24,9 @@ class lock_release_user {
 class lock_release_flush : public lock_release_user {
  public:
    lock_release_flush(extent_client *ec) : ec_(ec) { }
-   virtual void dorelease(lock_protocol::lockid_t eid);
+   virtual void dorelease(lock_protocol::lockid_t eid) {
+     ec_->flush(eid);
+   }
    virtual ~lock_release_flush() {};
  private:
    extent_client *ec_;
