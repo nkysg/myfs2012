@@ -80,6 +80,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <algorithm>
 
 #include "handle.h"
 #include "rsm.h"
@@ -208,6 +209,9 @@ rsm::sync_with_backups()
   // Wait until
   //   - all backups in view vid_insync are synchronized
   //   - or there is a committed viewchange
+  backups = cfg->get_view(vid_insync);
+  backups.erase(std::remove(backups.begin(), backups.end(), primary), backups.end());
+  pthread_cond_wait(&sync_cond, &rsm_mutex);
   insync = false;
   return true;
 }
@@ -221,6 +225,14 @@ rsm::sync_with_primary()
   // You fill this in for Lab 7
   // Keep synchronizing with primary until the synchronization succeeds,
   // or there is a commited viewchange
+  while (true) {
+    if (vid_commit != vid_insync) {
+      return false;
+    }
+    if (statetransfer(m) && statetransferdone(m)) {
+      break;
+    }
+  }
   return true;
 }
 
@@ -263,6 +275,20 @@ bool
 rsm::statetransferdone(std::string m) {
   // You fill this in for Lab 7
   // - Inform primary that this slave has synchronized for vid_insync
+  rsm_protocol::status ret = rsm_protocol::OK;
+  handle h(m);
+  VERIFY(pthread_mutex_unlock(&rsm_mutex) == 0);
+  rpcc *cl = h.safebind();
+  if (cl) {
+    int r;
+    ret = cl->call(rsm_protocol::transferdonereq, cfg->myaddr(), vid_insync, r, rpcc::to(1000));
+  }
+  VERIFY(pthread_mutex_lock(&rsm_mutex) == 0);
+  if (cl == 0 || ret != rsm_protocol::OK) {
+    tprintf("rsm::statetransferdone: couldn't reach %s %lx %d\n", primary.c_str(),
+        (long unsigned) cl, ret);
+    return false;
+  }
   return true;
 }
 
@@ -315,6 +341,7 @@ rsm::commit_change_wo(unsigned vid)
   inviewchange = true;
   set_primary(vid);
   pthread_cond_signal(&recovery_cond);
+  pthread_cond_signal(&sync_cond);  // need?
   if (cfg->ismember(cfg->myaddr(), vid_commit))
     breakpoint2();
 }
@@ -346,43 +373,62 @@ rsm_client_protocol::status
 rsm::client_invoke(int procno, std::string req, std::string &r)
 {
   int ret = rsm_client_protocol::OK;
+  ScopedLock ml(&invoke_mutex);
+
+
   VERIFY(pthread_mutex_lock(&rsm_mutex) == 0);
   if (inviewchange) {
     ret = rsm_client_protocol::BUSY;
     VERIFY(pthread_mutex_unlock(&rsm_mutex) == 0);
-  } else if (!amiprimary()) {
-    ret = rsm_client_protocol::NOTPRIMARY;
-    VERIFY(pthread_mutex_unlock(&rsm_mutex) == 0);
-  } else {
-    inviewchange = true;
-    viewstamp cur_vs = myvs;
+    return ret;
+  }
+  VERIFY(pthread_mutex_unlock(&rsm_mutex) == 0);
 
-    // last_myvs = myvs;
-    // myvs.seqno += 1;
-    VERIFY(pthread_mutex_unlock(&rsm_mutex) == 0);
+  // the amiprimary will lock rsm_mutex
+  if (!amiprimary()) {
+    return rsm_client_protocol::NOTPRIMARY;
+  }
 
-    {
-      ScopedLock ml(&invoke_mutex);
-      int nums = backups.size();
-      rsm_protocol::status rs;
-      for (int i = 0; i < nums; i++) {
-        handle h(backups[i]);
-        rpcc *cl = h.safebind();
-        if (cl) {
-          int rr;
-          rs = cl->call(rsm_protocol::invoke, procno, cur_vs, req, rr, rpcc::to(1000));
-        }
+  VERIFY(pthread_mutex_lock(&rsm_mutex) == 0);
+  viewstamp cur_vs = myvs;
 
-        if (cl == NULL || rs != rsm_protocol::OK) {
-          return rsm_client_protocol::BUSY;
-        }
+  last_myvs = myvs;
+  myvs.seqno += 1;
+
+  std::vector<std::string> cur_view = cfg->get_view(vid_commit);
+
+  int nums = cur_view.size();
+  rsm_protocol::status rs;
+  bool ok = true;
+  bool first = true;
+  for (int i = 0; i < nums; i++) {
+    if (cur_view[i] != primary) {
+
+      VERIFY(pthread_mutex_unlock(&rsm_mutex) == 0);
+      handle h(cur_view[i]);
+      rpcc *cl = h.safebind();
+      if (cl) {
+        int rr;
+        rs = cl->call(rsm_protocol::invoke, procno, cur_vs, req, rr, rpcc::to(1000));
+      }
+
+      VERIFY(pthread_mutex_lock(&rsm_mutex) == 0);
+      if (cl == NULL || rs != rsm_protocol::OK) {
+        ok = false;
+        ret = rsm_client_protocol::BUSY;
+        break;
+      }
+
+      if (first) {
+        breakpoint1();
+        partition1();
+        first = false;
       }
     }
+  }
+  VERIFY(pthread_mutex_unlock(&rsm_mutex) == 0);
+  if (ok) {
     execute(procno, req, r);
-
-    VERIFY(pthread_mutex_lock(&rsm_mutex) == 0);
-    inviewchange = false;
-    VERIFY(pthread_mutex_unlock(&rsm_mutex) == 0);
   }
   // You fill this in for Lab 7
   return ret;
@@ -403,13 +449,19 @@ rsm::invoke(int proc, viewstamp vs, std::string req, int &dummy)
   ScopedLock l(&rsm_mutex);
   if (inviewchange) {
     ret = rsm_protocol::ERR;
+  } else if (primary == cfg->myaddr()) {
+    ret = rsm_protocol::ERR;
   } else {
-    if (vs.seqno != myvs.seqno) {
+    if (vs != myvs) {
       ret = rsm_protocol::ERR;
     } else {
       // should add seqno?
+      last_myvs = myvs;
+      myvs.seqno += 1;
+
       std::string r;
       execute(proc, req, r);
+      breakpoint1();
     }
   }
   return ret;
@@ -450,6 +502,15 @@ rsm::transferdonereq(std::string m, unsigned vid, int &)
   //   for the same view with me
   // - Remove the slave from the list of unsynchronized backups
   // - Wake up recovery thread if all backups are synchronized
+  if (!insync || vid != vid_insync) {
+    tprintf("hhhhhhhhhhhhhhhhhhhhh\n");
+    return rsm_protocol::BUSY;
+  }
+  backups.erase(std::remove(backups.begin(), backups.end(), m), backups.end());
+  if (backups.empty()) {
+    pthread_cond_signal(&sync_cond);
+  }
+
   return ret;
 }
 

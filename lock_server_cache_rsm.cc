@@ -36,6 +36,8 @@ lock_server_cache_rsm::lock_server_cache_rsm(class rsm *_rsm)
   VERIFY (r == 0);
   r = pthread_create(&th, NULL, &retrythread, (void *) this);
   VERIFY (r == 0);
+
+  rsm->set_state_transfer(this);
 }
 
 void
@@ -104,19 +106,20 @@ int lock_server_cache_rsm::acquire(lock_protocol::lockid_t lid, std::string id,
     entry->clt_seq[id] = xid;
     entry->release_status.erase(id);
 
-    if (!entry->isHeld()) {
+    if (!entry->held) {
       // tprintf("acquire: held \n");
-      entry->set_held(id);
-      if (entry->someoneWait()) {
-        entry->setRevoke(true);
+      entry->held = true;
+      entry->heldId = id;
+      if (!entry->waitIds.empty()) {
+        entry->revoke = true;
         revokeq.enq(client_entry(id, lid, xid));
       }
     } else {
       // tprintf("acquire: wait\n");
-      entry->addWaitId(id);
-      if (!entry->isRevoking()) {
-        entry->setRevoke(true);
-        std::string cid(entry->getHeldId());
+      entry->waitIds.insert(id);
+      if (!entry->revoke) {
+        entry->revoke = true;
+        std::string cid(entry->heldId);
         revokeq.enq(client_entry(cid, lid, entry->clt_seq[cid]));
       }
       ret = lock_protocol::RETRY;
@@ -157,13 +160,13 @@ lock_server_cache_rsm::release(lock_protocol::lockid_t lid, std::string id,
     it_rs = entry->release_status.find(id);
 
     if (it_rs == entry->release_status.end()) {
-      if (entry->isHeld()) {
-        entry->set_unheld();
-        entry->setRevoke(false);
+      if (entry->held) {
+        entry->held = false;
+        entry->revoke = false;
 
-        if (entry->someoneWait()) {
-          cid = entry->getWaitId();
-          entry->removeWaitId(cid);
+        if (!entry->waitIds.empty()) {
+          cid = *(entry->waitIds.begin());
+          entry->waitIds.erase(cid);
           retryq.enq(client_entry(cid, lid, entry->clt_seq[cid]));
         }
       } else {
@@ -190,12 +193,52 @@ lock_server_cache_rsm::marshal_state()
 {
   std::ostringstream ost;
   std::string r;
+
+  ScopedLock ml(&mutex_);
+  marshall rep;
+  rep << (unsigned int)lockTable_.size();
+  std::map<lock_protocol::lockid_t, Lock *>::iterator iter_lock;
+  for (iter_lock = lockTable_.begin(); iter_lock != lockTable_.end(); ++iter_lock) {
+    lock_protocol::lockid_t lid = iter_lock->first;
+    Lock *entry = iter_lock->second;
+
+    rep << lid;
+
+    rep << entry->held;
+    rep << entry->heldId;
+
+    rep << entry->waitIds;
+    rep << entry->clt_seq;
+    rep << entry->acquire_status;
+    rep << entry->release_status;
+
+  }
+  r = rep.str();
   return r;
 }
 
 void
 lock_server_cache_rsm::unmarshal_state(std::string state)
 {
+  ScopedLock ml(&mutex_);
+  unmarshall rep(state);
+  unsigned int locks_size;
+  rep >> locks_size;
+  for (unsigned int i = 0; i < locks_size; i++) {
+    lock_protocol::lockid_t lid;
+    rep >> lid;
+
+    Lock *entry = new Lock();
+    rep >> entry->held;
+    rep >> entry->heldId;
+
+    rep >> entry->waitIds;
+    rep >> entry->clt_seq;
+    rep >> entry->acquire_status;
+    rep >> entry->release_status;
+
+    lockTable_.insert(std::make_pair(lid, entry));
+  }
 }
 
 lock_protocol::status

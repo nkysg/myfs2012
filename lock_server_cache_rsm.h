@@ -18,42 +18,7 @@ struct Lock {
     : held(true), revoke(false), heldId(id) { }
 
   ~Lock() { }
-
-  bool isHeld() {
-    return held;
-  }
-  void set_held(std::string id) {
-    held = true;
-    heldId = id;
-  }
-  void set_unheld() {
-    held = false;
-  }
-
-  bool isRevoking() {
-    return revoke;
-  }
-  void setRevoke(bool s) {
-    revoke = s;
-  }
-
-  std::string getHeldId() {
-    return heldId;
-  }
-  bool someoneWait() {
-    return !waitIds.empty();
-  }
-  std::string getWaitId() {
-    return *waitIds.begin();
-  }
-  void addWaitId(std::string id) {
-    waitIds.insert(id);
-  }
-  void removeWaitId(std::string s) {
-    waitIds.erase(s);
-  }
-
- private:
+ public:
   bool held;
   bool revoke;
   std::string heldId;
@@ -98,5 +63,31 @@ class lock_server_cache_rsm : public rsm_state_transfer {
   int release(lock_protocol::lockid_t, std::string id, lock_protocol::xid_t,
 	      int &);
 };
+
+template <class A> marshall &
+operator<<(marshall &m, const std::set<A> &d) {
+  typename std::set<A>::const_iterator i;
+
+  m << (unsigned int)d.size();
+
+  for (i = d.begin(); i != d.end(); i++) {
+    m << *i;
+  }
+  return m;
+}
+
+template <class A> unmarshall &
+operator>>(unmarshall &u, std::set<A> &d) {
+  unsigned int n;
+  u >> n;
+
+  d.clear();
+  for (unsigned int lcv = 0; lcv < n; lcv++) {
+    A a;
+    u >> a;
+    d.insert(a);
+  }
+  return u;
+}
 
 #endif
