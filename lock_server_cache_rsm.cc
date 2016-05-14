@@ -56,7 +56,6 @@ lock_server_cache_rsm::revoker()
       rpcc *cl = h.safebind();
       if (cl) {
         int r;
-        tprintf("i am revoking....\n");
         cl->call(rlock_protocol::revoke, e.lid, e.xid, r);
       }
     }
@@ -79,7 +78,6 @@ lock_server_cache_rsm::retryer()
       rpcc *cl = h.safebind();
       if (cl) {
         int r;
-        tprintf("let the client:%s to revoke\n", e.cid.c_str());
         cl->call(rlock_protocol::retry, e.lid, e.xid, r);
       }
     }
@@ -109,23 +107,17 @@ int lock_server_cache_rsm::acquire(lock_protocol::lockid_t lid, std::string id,
     entry->release_status.erase(id);
 
     if (!entry->held) {
-      // tprintf("acquire: held \n");
       entry->held = true;
       entry->heldId = id;
 
       entry->waitIds.erase(id);
       if (!entry->waitIds.empty()) {
-        entry->revoke = true;
         revokeq.enq(client_entry(id, lid, xid));
       }
     } else {
-      // tprintf("acquire: wait\n");
       entry->waitIds.insert(id);
-      if (!entry->revoke) {
-        entry->revoke = true;
-        std::string cid(entry->heldId);
-        revokeq.enq(client_entry(cid, lid, entry->clt_seq[cid]));
-      }
+      std::string cid(entry->heldId);
+      revokeq.enq(client_entry(cid, lid, entry->clt_seq[cid]));
       ret = lock_protocol::RETRY;
     }
 
@@ -166,13 +158,11 @@ lock_server_cache_rsm::release(lock_protocol::lockid_t lid, std::string id,
     if (it_rs == entry->release_status.end()) {
       if (entry->held) {
         entry->held = false;
-        entry->revoke = false;
 
         if (!entry->waitIds.empty()) {
           cid = *(entry->waitIds.begin());
           entry->waitIds.erase(cid);
           retryq.enq(client_entry(cid, lid, entry->clt_seq[cid]));
-          tprintf("release: let client to retry\n");
         }
       } else {
         tprintf("error, cid: %s, release unheld lock!\n", id.c_str());
@@ -190,7 +180,6 @@ lock_server_cache_rsm::release(lock_protocol::lockid_t lid, std::string id,
     tprintf("relsase error: haven't receive the acquire number\n");
     ret = lock_protocol::RPCERR;
   }
-  tprintf("release: client:%s is relseasing\n", id.c_str());
   return ret;
 }
 

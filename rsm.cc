@@ -191,24 +191,20 @@ rsm::recovery()
 bool
 rsm::sync_with_backups()
 {
-  tprintf("rsm::sync_with_backups: i am dead here111\n");
   pthread_mutex_unlock(&rsm_mutex);
   {
     // Make sure that the state of lock_server_cache_rsm is stable during
     // synchronization; otherwise, the primary's state may be more recent
     // than replicas after the synchronization.
     ScopedLock ml(&invoke_mutex);
-  tprintf("rsm::sync_with_backups: i am dead here222\n");
     // By acquiring and releasing the invoke_mutex once, we make sure that
     // the state of lock_server_cache_rsm will not be changed until all
     // replicas are synchronized. The reason is that client_invoke arrives
     // after this point of time will see inviewchange == true, and returns
     // BUSY.
   }
-  tprintf("rsm::sync_with_backups: i am dead here\n");
   pthread_mutex_lock(&rsm_mutex);
   // Start accepting synchronization request (statetransferreq) now!
-  tprintf("rsm::sync_with_backups: i am dead here2\n");
   insync = true;
   // You fill this in for Lab 7
   // Wait until
@@ -217,9 +213,7 @@ rsm::sync_with_backups()
   if (vid_insync == vid_commit) {
     backups = cfg->get_view(vid_insync);
     backups.erase(std::remove(backups.begin(), backups.end(), primary), backups.end());
-    tprintf("rsm::sync_with_backups: i am dead here3\n");
     pthread_cond_wait(&recovery_cond, &rsm_mutex);
-    tprintf("rsm::sync_with_backups: i am dead here4\n");
   } else {
     insync = false;
     return false;
@@ -386,7 +380,6 @@ rsm::client_invoke(int procno, std::string req, std::string &r)
   int ret = rsm_client_protocol::OK;
   ScopedLock ml(&invoke_mutex);
 
-  tprintf("rsm::client_invoke: invoke begi\n");
   VERIFY(pthread_mutex_lock(&rsm_mutex) == 0);
   if (inviewchange) {
     ret = rsm_client_protocol::BUSY;
@@ -423,7 +416,6 @@ rsm::client_invoke(int procno, std::string req, std::string &r)
         rs = cl->call(rsm_protocol::invoke, procno, cur_vs, req, rr, rpcc::to(1000));
       }
 
-      // VERIFY(pthread_mutex_lock(&rsm_mutex) == 0);
       if (cl == NULL || rs != rsm_protocol::OK) {
         tprintf("rsm::client_invoke: the slave %s is down\n", cur_view[i].c_str());
         ok = false;
@@ -438,10 +430,8 @@ rsm::client_invoke(int procno, std::string req, std::string &r)
       }
     }
   }
-  // VERIFY(pthread_mutex_unlock(&rsm_mutex) == 0);
   if (ok) {
     execute(procno, req, r);
-  tprintf("rsm::client_invoke: invoke end\n");
   }
   // You fill this in for Lab 7
   return ret;
@@ -468,7 +458,6 @@ rsm::invoke(int proc, viewstamp vs, std::string req, int &dummy)
     if (vs != myvs) {
       ret = rsm_protocol::ERR;
     } else {
-      // should add seqno?
       last_myvs = myvs;
       myvs.seqno += 1;
 
@@ -492,7 +481,6 @@ rsm_protocol::transferres &r)
   // Code will be provided in Lab 7
   tprintf("transferreq from %s (%d,%d) vs (%d,%d)\n", src.c_str(),
 	 last.vid, last.seqno, last_myvs.vid, last_myvs.seqno);
-  tprintf("transferreq: insync: %d vid: %u vid_insync: %u\n", (int)insync, vid, vid_insync);
   if (!insync || vid != vid_insync) {
      return rsm_protocol::BUSY;
   }

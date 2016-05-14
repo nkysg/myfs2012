@@ -76,7 +76,6 @@ lock_client_cache_rsm::releaser()
       VERIFY(iter != cache_.end());
       Lock *entry = iter->second;
       entry->state_ = NONE;
-      // pthread_cond_broadcast(&entry->retrycond_);
       pthread_cond_broadcast(&entry->waitcond_);
     }
 
@@ -111,56 +110,32 @@ lock_client_cache_rsm::acquire(lock_protocol::lockid_t lid)
           ++xid;
           pthread_mutex_unlock(&mutex_);
 
-          // tprintf("client none:\n");
           ret = rsmc->call(lock_protocol::acquire, lid, id, cur_xid, r);
-          // tprintf("client none2:\n");
 
           pthread_mutex_lock(&mutex_);
           if (ret == lock_protocol::OK) {
             entry->state_ = LOCKED;
             return ret;
           } else if (ret == lock_protocol::RETRY) {
-            // if (!entry->retry_) {
-              // struct timespec now, deadline;
-              // clock_gettime(CLOCK_REALTIME, &now);
-              // deadline.tv_sec = now.tv_sec + 3;
-              // deadline.tv_nsec = 0;
-
-              // // in case the server down
-              // int t = pthread_cond_timedwait(&entry->waitcond_, &mutex_, &deadline);
-              // if (t == ETIMEDOUT) {
-                // entry->retry_ = true;
-              // }
-            // }
-          // // tprintf("client none3:\n");
+            // go to ACQUIRING
           } else {
-            // error
             return lock_protocol::RPCERR;
           }
           break;
         }
       case FREE:
         {
-          // tprintf("client free:\n");
           entry->state_ = LOCKED;
           return lock_protocol::OK;
         }
       case LOCKED:
         {
-          // tprintf("client acquire locked:\n");
           pthread_cond_wait(&entry->waitcond_, &mutex_);
-          // if (entry->state_ == FREE) {
-            // entry->state_ = LOCKED;
-            // return lock_protocol::OK;
-          // }
-          // tprintf("client acquir locked2:\n");
           break;
         }
       case ACQUIRING:
         {
           if (!entry->retry_) {
-          // tprintf("client acquiring:\n");
-            // pthread_cond_wait(&entry->waitcond_, &mutex_);
 
             struct timespec now, deadline;
             clock_gettime(CLOCK_REALTIME, &now);
@@ -173,46 +148,28 @@ lock_client_cache_rsm::acquire(lock_protocol::lockid_t lid)
               entry->retry_ = true;
             }
 
-          // tprintf("client acquiring 2:\n");
           } else {
-          // tprintf("client acquiring3:\n");
             entry->retry_ = false;
             entry->xid = xid;
             lock_protocol::xid_t cur_xid = xid;
             ++xid;
 
             pthread_mutex_unlock(&mutex_);
-            tprintf("pid: %lu, i am in a busy loop\n", (unsigned long)pthread_self());
             ret = rsmc->call(lock_protocol::acquire, lid, id, cur_xid, r);
             pthread_mutex_lock(&mutex_);
 
             if (ret == lock_protocol::OK) {
-              tprintf("pid: %lu, i have got the lock\n", (unsigned long)pthread_self());
               entry->state_ = LOCKED;
               return ret;
             } else if (ret == lock_protocol::RETRY) {
-              tprintf("pid: %lu, i am in a retry loop\n", (unsigned long)pthread_self());
-              // if (!entry->retry_) {
-                // struct timespec now, deadline;
-                // clock_gettime(CLOCK_REALTIME, &now);
-                // deadline.tv_sec = now.tv_sec + 3;
-                // deadline.tv_nsec = 0;
-
-                // // in case the server down
-                // int t = pthread_cond_timedwait(&entry->waitcond_, &mutex_, &deadline);
-                // if (t == ETIMEDOUT) {
-                  // entry->retry_ = true;
-                // }
-              // }
+              // continue ACQUIRING
             }
           }
           break;
         }
       case RELEASING:
         {
-          // tprintf("client releasing:\n");
           pthread_cond_wait(&entry->waitcond_, &mutex_);
-          // tprintf("client releasing222222:\n");
           break;
         }
     }
@@ -235,9 +192,8 @@ lock_client_cache_rsm::release(lock_protocol::lockid_t lid)
 
     if (entry->state_ == LOCKED) {
       if (entry->revoke_) {
-          // tprintf("client releasing 11111:\n");
         entry->state_ = RELEASING;
-          entry->revoke_ = false;
+        entry->revoke_ = false;
         lock_protocol::xid_t cur_xid = entry->xid;
         pthread_mutex_unlock(&mutex_);
 
@@ -246,17 +202,10 @@ lock_client_cache_rsm::release(lock_protocol::lockid_t lid)
         }
         ret = rsmc->call(lock_protocol::release, lid, id, cur_xid, r);
 
-        tprintf("relsease: pid: %lu, i have released the lock\n", (unsigned long)pthread_self());
-
         pthread_mutex_lock(&mutex_);
-        // if (ret == lock_protocol::OK) {
-          entry->state_ = NONE;
-          // entry->revoke_ = false;
-        // }
+        entry->state_ = NONE;
         pthread_cond_broadcast(&entry->waitcond_);
-        // pthread_cond_broadcast(&entry->revokecond_);
       } else {
-          // tprintf("client releasing 2222:\n");
         entry->state_ = FREE;
         pthread_cond_broadcast(&entry->waitcond_);
       }
@@ -283,19 +232,18 @@ lock_client_cache_rsm::revoke_handler(lock_protocol::lockid_t lid,
   // tprintf("revoke: id: %s xid:%llu\n", id.c_str(), xid);
   if ((iter = cache_.find(lid)) != cache_.end()) {
     Lock *entry = iter->second;
-      if (xid == entry->xid) {
-        entry->revoke_ = true;
-        if (entry->state_ == FREE) {
-          entry->state_ = RELEASING;
-          releaseq.enq(server_entry(lid, xid));
-          entry->revoke_ = false;
-        }
-      } else {
-        tprintf("revoke error, out of date: xid: %llu, entryxid: %llu\n", xid, entry->xid);
+    if (xid == entry->xid) {
+      entry->revoke_ = true;
+      if (entry->state_ == FREE) {
+        entry->state_ = RELEASING;
+        releaseq.enq(server_entry(lid, xid));
+        entry->revoke_ = false;
       }
+    } else {
+      tprintf("revoke error, out of date: xid: %llu, entryxid: %llu\n", xid, entry->xid);
+    }
 
   } else {
-    tprintf("reveke error:.....\n");
     ret = rlock_protocol::RPCERR;
   }
   return ret;
@@ -312,10 +260,8 @@ lock_client_cache_rsm::retry_handler(lock_protocol::lockid_t lid,
   if ((iter = cache_.find(lid)) != cache_.end()) {
     Lock *entry = iter->second;
     if (xid == entry->xid) {
-      // if (entry->state_ == ACQUIRING) {
-        entry->retry_ = true;
-        pthread_cond_broadcast(&entry->waitcond_);
-      // }
+      entry->retry_ = true;
+      pthread_cond_broadcast(&entry->waitcond_);
     }
   } else {
     ret = rlock_protocol::RPCERR;

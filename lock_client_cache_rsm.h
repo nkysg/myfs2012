@@ -41,18 +41,12 @@ class lock_client_cache_rsm : public lock_client {
     Lock() :
       nacquire(0), revoke_(false), retry_(false), state_(NONE) {
       pthread_cond_init(&waitcond_, NULL);
-      // pthread_cond_init(&revokecond_, NULL);
-      // pthread_cond_init(&retrycond_, NULL);
     }
     ~Lock() {
       pthread_cond_destroy(&waitcond_);
-      // pthread_cond_destroy(&revokecond_);
-      // pthread_cond_destroy(&retrycond_);
     }
 
     pthread_cond_t waitcond_;
-    // pthread_cond_t revokecond_;
-    // pthread_cond_t retrycond_;
 
     long nacquire;
     bool revoke_;
