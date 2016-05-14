@@ -68,6 +68,7 @@ lock_client_cache_rsm::releaser()
       lu->dorelease(e.lid);
     }
     ret = rsmc->call(lock_protocol::release, e.lid, id, e.xid, r);
+    tprintf("rsm::releaser: pid: %lu, i have released the lock\n", (unsigned long)pthread_self());
     {
       ScopedLock l(&mutex_);
       std::map<lock_protocol::lockid_t, Lock *>::iterator iter;
@@ -181,13 +182,16 @@ lock_client_cache_rsm::acquire(lock_protocol::lockid_t lid)
             ++xid;
 
             pthread_mutex_unlock(&mutex_);
+            tprintf("pid: %lu, i am in a busy loop\n", (unsigned long)pthread_self());
             ret = rsmc->call(lock_protocol::acquire, lid, id, cur_xid, r);
             pthread_mutex_lock(&mutex_);
 
             if (ret == lock_protocol::OK) {
+              tprintf("pid: %lu, i have got the lock\n", (unsigned long)pthread_self());
               entry->state_ = LOCKED;
               return ret;
             } else if (ret == lock_protocol::RETRY) {
+              tprintf("pid: %lu, i am in a retry loop\n", (unsigned long)pthread_self());
               // if (!entry->retry_) {
                 // struct timespec now, deadline;
                 // clock_gettime(CLOCK_REALTIME, &now);
@@ -241,6 +245,8 @@ lock_client_cache_rsm::release(lock_protocol::lockid_t lid)
           lu->dorelease(lid);
         }
         ret = rsmc->call(lock_protocol::release, lid, id, cur_xid, r);
+
+        tprintf("relsease: pid: %lu, i have released the lock\n", (unsigned long)pthread_self());
 
         pthread_mutex_lock(&mutex_);
         // if (ret == lock_protocol::OK) {

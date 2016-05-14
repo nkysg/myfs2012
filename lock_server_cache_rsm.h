@@ -12,15 +12,14 @@
 #include "rpc/fifo.h"
 
 struct Lock {
-  Lock() : held(false), revoke(false) { }
+  Lock() : held(false) { }
 
   Lock(std::string id)
-    : held(true), revoke(false), heldId(id) { }
+    : held(true), heldId(id) { }
 
   ~Lock() { }
  public:
   bool held;
-  bool revoke;
   std::string heldId;
   std::set<std::string> waitIds;
  public:
